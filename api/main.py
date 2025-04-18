@@ -1,58 +1,89 @@
-from fastapi import FastAPI, Form, HTTPException, Depends
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, HTTPException, Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
 from datetime import datetime, timedelta
 
-# App setup
-app = FastAPI()
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Replace with frontend origin in production
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Dummy user (replace with DB check in real app)
-dummy_user = {
-    "aadhaar": "111111111111",
-    "mobile": "9876543210",
-    "otp": "123456"
-}
-
-# JWT config
-SECRET_KEY = "your-super-secret-key"
+# === CONFIG ===
+SECRET_KEY = "super-secret-key"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+# === APP INITIALIZATION ===
+app = FastAPI()
+auth_scheme = HTTPBearer()
 
-def create_access_token(data: dict, expires_delta: timedelta = None):
+# === CORS (adjust as needed for deployment) ===
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allow all methods (GET, POST, etc.)
+    allow_headers=["*"],  # Allow all headers
+)
+
+# === DUMMY USER DB ===
+dummy_users = [
+    {
+        "aadhaar": "123412341234",
+        "mobile": "9999999999",
+        "otp": "1234",
+        "name": "Vinay",
+        "role": "citizen"
+    }
+]
+
+# === IN-MEMORY SESSION STORE ===
+session_tokens = {}  # { aadhaar: token }
+
+# === JWT UTILS ===
+def create_access_token(data: dict, expires_delta=None):
     to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=15))
+    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
-def get_current_user(token: str = Depends(oauth2_scheme)):
+def verify_token(token: str):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        aadhaar = payload.get("sub")
-        if aadhaar is None:
-            raise HTTPException(status_code=401, detail="Invalid token")
-        return aadhaar
+        return payload  # dict with 'aadhaar' key
     except JWTError:
-        raise HTTPException(status_code=401, detail="Invalid token")
+        return None
+
+# === DEPENDENCY FOR AUTH ===
+def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(auth_scheme)):
+    token = credentials.credentials
+    user_data = verify_token(token)
+    if not user_data:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    
+    aadhaar = user_data.get("aadhaar")
+    if session_tokens.get(aadhaar) != token:
+        raise HTTPException(status_code=401, detail="Session expired or logged in elsewhere")
+    
+    return user_data
+
+# === ROUTES ===
 
 @app.post("/login")
-async def login(aadhaar: str = Form(...), mobile: str = Form(...), otp: str = Form(...)):
-    if aadhaar == dummy_user["aadhaar"] and mobile == dummy_user["mobile"] and otp == dummy_user["otp"]:
-        access_token = create_access_token(data={"sub": aadhaar}, expires_delta=timedelta(minutes=30))
-        return JSONResponse(content={"message": "Login successful", "token": access_token})
+async def login(data: dict):
+    aadhaar = data.get("aadhaar")
+    mobile = data.get("mobile")
+    otp = data.get("otp")
+
+    for user in dummy_users:
+        if user["aadhaar"] == aadhaar and user["mobile"] == mobile and user["otp"] == otp:
+            token = create_access_token({"aadhaar": aadhaar})
+            session_tokens[aadhaar] = token  # overwrite any previous token
+            return {"token": token, "message": "Login successful"}
+    
     raise HTTPException(status_code=401, detail="Invalid credentials")
 
 @app.get("/dashboard")
-async def dashboard(current_user: str = Depends(get_current_user)):
-    return {"message": f"Welcome to your dashboard, Aadhaar: {current_user}"}
+async def get_dashboard(user=Depends(get_current_user)):
+    aadhaar = user.get("aadhaar")
+    for u in dummy_users:
+        if u["aadhaar"] == aadhaar:
+            return {"user": u}
+    
+    raise HTTPException(status_code=404, detail="User not found")
