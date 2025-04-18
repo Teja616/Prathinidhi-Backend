@@ -25,10 +25,24 @@ app.add_middleware(
 # === DUMMY USER DB ===
 dummy_users = [
     {
-        "aadhaar": "123412341234",
-        "mobile": "9999999999",
-        "otp": "1234",
+        "aadhaar": "123456789012",
+        "mobile": "9014569376",
+        "otp": "4689",
         "name": "Vinay",
+        "role": "citizen"
+    },
+    {
+        "aadhaar": "123412341234",
+        "mobile": "6281363756",
+        "otp": "8848",
+        "name": "Sai",
+        "role": "citizen"
+    },
+    {
+        "aadhaar": "123412341234",
+        "mobile": "8888888888",
+        "otp": "1234",
+        "name": "Sizzan",
         "role": "citizen"
     }
 ]
