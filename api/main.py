@@ -39,7 +39,7 @@ dummy_users = [
         "role": "citizen"
     },
     {
-        "aadhaar": "123412341234",
+        "aadhaar": "123456123456",
         "mobile": "8888888888",
         "otp": "1234",
         "name": "Sizzan",
