@@ -116,6 +116,7 @@ async def file_complaint(data: dict, user=Depends(get_current_user)):
         "religion": data.get("religion"),
         "caste": data.get("caste"),
         "occupation": data.get("occupation"),
+        "timestamp": datetime.utcnow().isoformat()
 
     }
 
