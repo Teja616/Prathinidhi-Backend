@@ -3,6 +3,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from jose import jwt, JWTError
 from datetime import datetime, timedelta
+from typing import Optional
 
 # === CONFIG ===
 SECRET_KEY = "super-secret-key"
@@ -13,13 +14,13 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 app = FastAPI()
 auth_scheme = HTTPBearer()
 
-# === CORS (adjust as needed for deployment) ===
+# === CORS ===
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],  # Allow all methods (GET, POST, etc.)
-    allow_headers=["*"],  # Allow all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # === DUMMY USER DB ===
@@ -29,26 +30,29 @@ dummy_users = [
         "mobile": "9014569376",
         "otp": "4689",
         "name": "Vinay",
-        "role": "citizen"
+        "role": "citizen",
+        "complaints": []
     },
     {
         "aadhaar": "123412341234",
         "mobile": "6281363756",
         "otp": "8848",
         "name": "Sai",
-        "role": "citizen"
+        "role": "citizen",
+        "complaints": []
     },
     {
         "aadhaar": "123456123456",
         "mobile": "8888888888",
         "otp": "1234",
         "name": "Sizzan",
-        "role": "citizen"
+        "role": "citizen",
+        "complaints": []
     }
 ]
 
-# === IN-MEMORY SESSION STORE ===
-session_tokens = {}  # { aadhaar: token }
+# === SESSION STORE ===
+session_tokens = {}
 
 # === JWT UTILS ===
 def create_access_token(data: dict, expires_delta=None):
@@ -60,11 +64,11 @@ def create_access_token(data: dict, expires_delta=None):
 def verify_token(token: str):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        return payload  # dict with 'aadhaar' key
+        return payload
     except JWTError:
         return None
 
-# === DEPENDENCY FOR AUTH ===
+# === DEPENDENCY ===
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(auth_scheme)):
     token = credentials.credentials
     user_data = verify_token(token)
@@ -78,7 +82,6 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(auth_sc
     return user_data
 
 # === ROUTES ===
-
 @app.post("/login")
 async def login(data: dict):
     aadhaar = data.get("aadhaar")
@@ -88,7 +91,7 @@ async def login(data: dict):
     for user in dummy_users:
         if user["aadhaar"] == aadhaar and user["mobile"] == mobile and user["otp"] == otp:
             token = create_access_token({"aadhaar": aadhaar})
-            session_tokens[aadhaar] = token  # overwrite any previous token
+            session_tokens[aadhaar] = token
             return {"token": token, "message": "Login successful"}
     
     raise HTTPException(status_code=401, detail="Invalid credentials")
@@ -99,5 +102,26 @@ async def get_dashboard(user=Depends(get_current_user)):
     for u in dummy_users:
         if u["aadhaar"] == aadhaar:
             return {"user": u}
+    
+    raise HTTPException(status_code=404, detail="User not found")
+
+@app.post("/complaint")
+async def file_complaint(data: dict, user=Depends(get_current_user)):
+    aadhaar = user.get("aadhaar")
+    
+    complaint = {
+        "applicationType": data.get("applicationType"),
+        "receivedThrough": data.get("receivedThrough"),
+        "problemSummary": data.get("problemSummary"),
+        "religion": data.get("religion"),
+        "caste": data.get("caste"),
+        "occupation": data.get("occupation"),
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
+    for u in dummy_users:
+        if u["aadhaar"] == aadhaar:
+            u.setdefault("complaints", []).append(complaint)
+            return {"message": "Complaint filed successfully", "complaint": complaint}
     
     raise HTTPException(status_code=404, detail="User not found")
