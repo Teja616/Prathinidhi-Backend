@@ -63,7 +63,7 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(auth_sc
     if not user_data:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
     
-    aadhaar = user_data.get("Aadhaar")
+    aadhaar = user_data.get("aadhaar")
     if session_tokens.get(aadhaar) != token:
         raise HTTPException(status_code=401, detail="Session expired or logged in elsewhere")
     
@@ -79,18 +79,18 @@ async def custom_404_handler(request: Request, exc):
 
 @app.post("/login")
 async def login(data: dict):
-    aadhaar = data.get("Aadhaar")
-    mobile = data.get("Mobile")
-    otp = data.get("Otp")
+    aadhaar = data.get("aadhaar")
+    mobile = data.get("mobile")
+    otp = data.get("otp")
 
     # Retrieve users from Firebase Firestore
-    users_ref = db.collection("Users")
+    users_ref = db.collection("users")
     docs = users_ref.stream()
 
     for doc in docs:
         user = doc.to_dict()
-        if user["Aadhaar"] == aadhaar and user["Mobile"] == mobile and user["Otp"] == otp:
-            token = create_access_token({"Aadhaar": aadhaar})
+        if user["aadhaar"] == aadhaar and user["mobile"] == mobile and user["otp"] == otp:
+            token = create_access_token({"aadhaar": aadhaar})
             session_tokens[aadhaar] = token
             return {"token": token, "message": "Login successful"}
     
@@ -98,9 +98,9 @@ async def login(data: dict):
 
 @app.get("/dashboard")
 async def get_dashboard(user=Depends(get_current_user)):
-    aadhaar = user.get("Aadhaar")
+    aadhaar = user.get("aadhaar")
     # Retrieve user from Firebase Firestore
-    user_ref = db.collection("Users").document(aadhaar)
+    user_ref = db.collection("users").document(aadhaar)
     user_doc = user_ref.get()
     
     if user_doc.exists:
@@ -110,7 +110,7 @@ async def get_dashboard(user=Depends(get_current_user)):
 
 @app.post("/complaint")
 async def file_complaint(data: dict, user=Depends(get_current_user)):
-    aadhaar = user.get("Aadhaar")
+    aadhaar = user.get("aadhaar")
     
     complaint = {
         "applicationType": data.get("applicationType"),
@@ -123,7 +123,7 @@ async def file_complaint(data: dict, user=Depends(get_current_user)):
     }
 
     # Retrieve user from Firebase Firestore
-    user_ref = db.collection("Users").document(aadhaar)
+    user_ref = db.collection("users").document(aadhaar)
     user_doc = user_ref.get()
     
     if user_doc.exists:
