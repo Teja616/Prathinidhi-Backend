@@ -5,6 +5,7 @@ from jose import jwt, JWTError
 from datetime import datetime, timedelta
 from typing import Optional
 from fastapi.responses import FileResponse
+import os
 # === CONFIG ===
 SECRET_KEY = "super-secret-key"
 ALGORITHM = "HS256"
