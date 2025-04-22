@@ -28,7 +28,7 @@ app.add_middleware(
 )
 
 # === FIREBASE SETUP ===
-FIREBASE_CRED_PATH = os.getenv(FIREBASE_CRED_PATH)
+FIREBASE_CRED_PATH = os.getenv("FIREBASE_CRED_PATH")
 
 firebase_admin.initialize_app(cred)
 db = firestore.client()
