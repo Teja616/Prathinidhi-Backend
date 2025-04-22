@@ -1,3 +1,5 @@
+import firebase_admin
+from firebase_admin import credentials, firestore
 from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
@@ -6,6 +8,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 from fastapi.responses import FileResponse
 import os
+
 # === CONFIG ===
 SECRET_KEY = "super-secret-key"
 ALGORITHM = "HS256"
@@ -24,36 +27,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# === DUMMY USER DB ===
-dummy_users = [
-    {
-        "aadhaar": "123456789012",
-        "mobile": "9014569376",
-        "otp": "4689",
-        "name": "Vinay",
-        "role": "citizen",
-        "complaints": []
-    },
-    {
-        "aadhaar": "123412341234",
-        "mobile": "6281363756",
-        "otp": "8848",
-        "name": "Sai",
-        "role": "citizen",
-        "complaints": []
-    },
-    {
-        "aadhaar": "123456123456",
-        "mobile": "8888888888",
-        "otp": "1234",
-        "name": "Sizzan",
-        "role": "citizen",
-        "complaints": []
-    }
-]
-
-# === SESSION STORE ===
-session_tokens = {}
+# === FIREBASE SETUP ===
+cred = credentials.Certificate(FIREBASE_CRED_PATH)
+firebase_admin.initialize_app(cred)
+db = firestore.client()
 
 # === JWT UTILS ===
 def create_access_token(data: dict, expires_delta=None):
@@ -70,6 +47,9 @@ def verify_token(token: str):
     except JWTError:
         return None
 
+# === SESSION STORE ===
+session_tokens = {}
+
 # === DEPENDENCY ===
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(auth_scheme)):
     token = credentials.credentials
@@ -77,7 +57,7 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(auth_sc
     if not user_data:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
     
-    aadhaar = user_data.get("aadhaar")
+    aadhaar = user_data.get("Aadhaar")
     if session_tokens.get(aadhaar) != token:
         raise HTTPException(status_code=401, detail="Session expired or logged in elsewhere")
     
@@ -85,25 +65,26 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(auth_sc
 
 # === ROUTES ===
 
-
 # Custom 404 handler
 @app.exception_handler(404)
 async def custom_404_handler(request: Request, exc):
     file_path = os.path.join("static", "er404.html")
     return FileResponse(file_path, status_code=404)
 
-
-
-
 @app.post("/login")
 async def login(data: dict):
-    aadhaar = data.get("aadhaar")
-    mobile = data.get("mobile")
-    otp = data.get("otp")
+    aadhaar = data.get("Aadhaar")
+    mobile = data.get("Mobile")
+    otp = data.get("Otp")
 
-    for user in dummy_users:
-        if user["aadhaar"] == aadhaar and user["mobile"] == mobile and user["otp"] == otp:
-            token = create_access_token({"aadhaar": aadhaar})
+    # Retrieve users from Firebase Firestore
+    users_ref = db.collection("Users")
+    docs = users_ref.stream()
+
+    for doc in docs:
+        user = doc.to_dict()
+        if user["Aadhaar"] == aadhaar and user["Mobile"] == mobile and user["Otp"] == otp:
+            token = create_access_token({"Aadhaar": aadhaar})
             session_tokens[aadhaar] = token
             return {"token": token, "message": "Login successful"}
     
@@ -111,16 +92,19 @@ async def login(data: dict):
 
 @app.get("/dashboard")
 async def get_dashboard(user=Depends(get_current_user)):
-    aadhaar = user.get("aadhaar")
-    for u in dummy_users:
-        if u["aadhaar"] == aadhaar:
-            return {"user": u}
+    aadhaar = user.get("Aadhaar")
+    # Retrieve user from Firebase Firestore
+    user_ref = db.collection("Users").document(aadhaar)
+    user_doc = user_ref.get()
     
-    raise HTTPException(status_code=404, detail="User not found")
+    if user_doc.exists:
+        return {"user": user_doc.to_dict()}
+    else:
+        raise HTTPException(status_code=404, detail="User not found")
 
 @app.post("/complaint")
 async def file_complaint(data: dict, user=Depends(get_current_user)):
-    aadhaar = user.get("aadhaar")
+    aadhaar = user.get("Aadhaar")
     
     complaint = {
         "applicationType": data.get("applicationType"),
@@ -130,12 +114,20 @@ async def file_complaint(data: dict, user=Depends(get_current_user)):
         "caste": data.get("caste"),
         "occupation": data.get("occupation"),
         "timestamp": datetime.utcnow().isoformat()
-
     }
 
-    for u in dummy_users:
-        if u["aadhaar"] == aadhaar:
-            u.setdefault("complaints", []).append(complaint)
-            return {"message": "Complaint filed successfully", "complaint": complaint}
+    # Retrieve user from Firebase Firestore
+    user_ref = db.collection("Users").document(aadhaar)
+    user_doc = user_ref.get()
     
-    raise HTTPException(status_code=404, detail="User not found")
+    if user_doc.exists:
+        user_data = user_doc.to_dict()
+        complaints = user_data.get("complaints", [])
+        complaints.append(complaint)
+        
+        # Update the user's complaints in Firebase Firestore
+        user_ref.update({"complaints": complaints})
+        
+        return {"message": "Complaint filed successfully", "complaint": complaint}
+    else:
+        raise HTTPException(status_code=404, detail="User not found")
