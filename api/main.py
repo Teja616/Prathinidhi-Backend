@@ -28,10 +28,15 @@ app.add_middleware(
 )
 
 # === FIREBASE SETUP ===
+
 FIREBASE_CRED_PATH = os.getenv("FIREBASE_CRED_PATH")
 
-firebase_admin.initialize_app(cred)
-db = firestore.client()
+if FIREBASE_CRED_PATH:
+    cred = credentials.Certificate(FIREBASE_CRED_PATH)
+    firebase_admin.initialize_app(cred)
+    db = firestore.client()
+else:
+    raise ValueError("FIREBASE_CRED_PATH environment variable not set")
 
 # === JWT UTILS ===
 def create_access_token(data: dict, expires_delta=None):
