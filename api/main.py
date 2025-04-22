@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from jose import jwt, JWTError
 from datetime import datetime, timedelta
 from typing import Optional
-
+from fastapi.responses import FileResponse
 # === CONFIG ===
 SECRET_KEY = "super-secret-key"
 ALGORITHM = "HS256"
@@ -61,6 +61,7 @@ def create_access_token(data: dict, expires_delta=None):
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
+
 def verify_token(token: str):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -82,6 +83,17 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(auth_sc
     return user_data
 
 # === ROUTES ===
+
+
+# Custom 404 handler
+@app.exception_handler(404)
+async def custom_404_handler(request: Request, exc):
+    file_path = os.path.join("static", "er404.html")
+    return FileResponse(file_path, status_code=404)
+
+
+
+
 @app.post("/login")
 async def login(data: dict):
     aadhaar = data.get("aadhaar")
