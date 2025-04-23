@@ -3,6 +3,8 @@ from firebase_admin import credentials, firestore
 from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi import UploadFile, File
+from fastapi.responses import JSONResponse
 from jose import jwt, JWTError
 from datetime import datetime, timedelta
 from typing import Optional
@@ -137,3 +139,32 @@ async def file_complaint(data: dict, user=Depends(get_current_user)):
         return {"message": "Complaint filed successfully", "complaint": complaint}
     else:
         raise HTTPException(status_code=404, detail="User not found")
+
+
+@app.post("/upload")
+async def upload_image(file: UploadFile = File(...)):
+    # Validate file type (only allow PNG and JPG images)
+    if file.content_type not in ["image/png", "image/jpeg"]:
+        raise HTTPException(status_code=400, detail="Invalid file type. Only PNG and JPG are allowed.")
+    
+    # Initialize Firebase Storage bucket (if not already done)
+    bucket = storage.bucket()  # This will use the default bucket (you can specify your bucket name here)
+
+    # Define the path where the file will be stored in Firebase Storage
+    file_path = f"uploads/{file.filename}"
+
+    # Upload the file to Firebase Storage
+    blob = bucket.blob(file_path)
+
+    # Upload the file content to the blob
+    try:
+        blob.upload_from_file(file.file, content_type=file.content_type)
+        # Make the file publicly accessible (optional)
+        blob.make_public()
+
+        # Return the public URL of the uploaded image
+        return JSONResponse(content={"message": "File uploaded successfully", "file_url": blob.public_url})
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"File upload failed: {str(e)}")
+
